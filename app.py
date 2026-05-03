@@ -233,7 +233,7 @@ if len(numeric_df.columns) >= 2:
     col1, col2 = numeric_df.columns[0], numeric_df.columns[1]
     
     st.subheader("Hypothesis Testing & Distributions")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["T-Test", "Z-Test", "Shapiro-Wilk", "VIF", "Chi-Squared"])
+    tab1, tab2 = st.tabs(["T-Test", "Z-Test"])
     
     with tab1:
         st.markdown(f"**Independent T-Test** between `{col1}` and `{col2}`")
@@ -256,51 +256,6 @@ if len(numeric_df.columns) >= 2:
         else:
             st.warning("`statsmodels` library is required for Z-Test. Please install it (`pip install statsmodels`).")
 
-    with tab3:
-        st.markdown(f"**Shapiro-Wilk Test** for Normality on `{col1}`")
-        stat_sw, p_val_sw = stats.shapiro(numeric_df[col1].dropna())
-        st.write(f"Test Statistic: `{stat_sw:.4f}` | P-value: `{p_val_sw:.4e}`")
-        if p_val_sw < 0.05:
-            st.success(f"📝 **Conclusion:** P-value < 0.05. The data for {col1} does NOT follow a normal distribution.")
-        else:
-            st.info(f"📝 **Conclusion:** P-value >= 0.05. The data for {col1} appears to be normally distributed.")
-
-    with tab4:
-        st.markdown("**Variance Inflation Factor (VIF)**")
-        if HAS_STATSMODELS:
-            # Use up to top 4 numeric cols to prevent slow computation
-            X_vif = numeric_df.iloc[:, :4].dropna()
-            X_vif_with_const = sm.add_constant(X_vif)
-            vif_data = pd.DataFrame()
-            vif_data["Feature"] = X_vif_with_const.columns
-            vif_data["VIF"] = [variance_inflation_factor(X_vif_with_const.values, i) for i in range(X_vif_with_const.shape[1])]
-            vif_data = vif_data[vif_data["Feature"] != "const"]
-            
-            st.dataframe(vif_data)
-            high_vif = vif_data[vif_data["VIF"] > 5]
-            if not high_vif.empty:
-                st.warning(f"📝 **Conclusion:** Features with high multicollinearity (VIF > 5): {', '.join(high_vif['Feature'].tolist())}")
-            else:
-                st.success("📝 **Conclusion:** No high multicollinearity detected among these features (VIF <= 5).")
-        else:
-            st.warning("`statsmodels` library is required for VIF calculation. Please install it (`pip install statsmodels`).")
-            
-    with tab5:
-        st.markdown("**Chi-Squared Test of Independence**")
-        categorical_cols = df.select_dtypes(exclude=np.number).columns
-        if len(categorical_cols) >= 2:
-            cat1, cat2 = categorical_cols[0], categorical_cols[1]
-            st.markdown(f"Testing between `{cat1}` and `{cat2}`")
-            contingency_table = pd.crosstab(df[cat1], df[cat2])
-            chi2_stat, p_val_chi2, dof, expected = stats.chi2_contingency(contingency_table)
-            st.write(f"Chi2 Statistic: `{chi2_stat:.4f}` | P-value: `{p_val_chi2:.4e}`")
-            if p_val_chi2 < 0.05:
-                st.success("📝 **Conclusion:** Significant association found between these categorical variables.")
-            else:
-                st.info("📝 **Conclusion:** No significant association found between these variables.")
-        else:
-            st.info("📝 **Conclusion:** Not enough categorical columns found in the dataset for a Chi-Squared Test.")
-
 # ---------------- MACHINE LEARNING ----------------
 st.header("🤖 Machine Learning Insights")
 
@@ -312,11 +267,17 @@ if len(numeric_df.columns) > 1:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     # -------- REGRESSION --------
-    st.subheader("Linear Regression Performance")
+    st.subheader("Simple Linear Regression Performance")
+    
+    feature_col = X.columns[0]
+    st.markdown(f"**Predicting `{y.name}` using `{feature_col}`**")
+    
+    X_train_simple = X_train[[feature_col]]
+    X_test_simple = X_test[[feature_col]]
     
     model = LinearRegression()
-    model.fit(X_train, y_train)
-    pred = model.predict(X_test)
+    model.fit(X_train_simple, y_train)
+    pred = model.predict(X_test_simple)
     
     mae = mean_absolute_error(y_test, pred)
     rmse = np.sqrt(mean_squared_error(y_test, pred))
@@ -326,14 +287,14 @@ if len(numeric_df.columns) > 1:
     fig = px.bar(metrics, x="Metric", y="Value", color="Metric", text="Value")
     fig.update_traces(texttemplate='%{text:.3f}', textposition='outside')
     st.plotly_chart(fig, use_container_width=True)
-    st.success(f"📝 **Conclusion:** The Linear Regression model achieved an R² score of **{r2:.3f}**. This means the model explains {r2*100:.1f}% of the variance in the target variable using the given features, with an average error (MAE) of **{mae:.2f}**.")
+    st.success(f"📝 **Conclusion:** The Simple Linear Regression model achieved an R² score of **{r2:.3f}**. This means the model explains {r2*100:.1f}% of the variance in the target variable using the single feature '{feature_col}', with an average error (MAE) of **{mae:.2f}**.")
 
-    # -------- ACTUAL VS PREDICTED --------
-    st.subheader("Actual vs Predicted Values")
-    fig = px.scatter(x=y_test, y=pred, trendline="ols", trendline_color_override="red")
-    fig.update_layout(xaxis_title="Actual Values", yaxis_title="Predicted Values")
+    # -------- REGRESSION FIT PLOT --------
+    st.subheader(f"Regression Line: {feature_col} vs {y.name}")
+    fig = px.scatter(x=X_test_simple[feature_col], y=y_test, trendline="ols", trendline_color_override="red")
+    fig.update_layout(xaxis_title=feature_col, yaxis_title=y.name)
     st.plotly_chart(fig, use_container_width=True)
-    st.success(f"📝 **Conclusion:** The scatter plot contrasts actual vs. predicted values. The spread around the trendline (RMSE = **{rmse:.2f}**) visualizes the predictive accuracy and variance of this regression model.")
+    st.success(f"📝 **Conclusion:** The scatter plot visualizes the Simple Linear Regression fit. The spread around the trendline (RMSE = **{rmse:.2f}**) visualizes the predictive accuracy and variance of this model.")
 
 
     # -------- FEATURE IMPORTANCE --------
